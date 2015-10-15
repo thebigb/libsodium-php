@@ -32,7 +32,12 @@ libtool
 ltmain.sh
 missing
 mkinstalldirs
+run-tests.php
 tests/*.diff
 tests/*.log
 tests/*.php
 tests/*.sh
+tmp-php.ini
+run-tests.php
+ltmain.sh.backup
+make
