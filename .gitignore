@@ -37,6 +37,7 @@ tests/*.diff
 tests/*.log
 tests/*.php
 tests/*.sh
+tests/*.exp
 tmp-php.ini
 run-tests.php
 ltmain.sh.backup

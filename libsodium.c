@@ -97,11 +97,6 @@ ZEND_BEGIN_ARG_INFO_EX(AI_StringAndNonceAndKeyPair, 0, 0, 3)
   ZEND_ARG_INFO(0, key)
 ZEND_END_ARG_INFO()
 
-ZEND_BEGIN_ARG_INFO_EX(AI_MaybeKeyAndLength, 0, 0, 0)
-  ZEND_ARG_INFO(0, key)
-  ZEND_ARG_INFO(0, length)
-ZEND_END_ARG_INFO()
-
 ZEND_BEGIN_ARG_INFO_EX(AI_StringAndMaybeKeyAndLength, 0, 0, 1)
   ZEND_ARG_INFO(0, string)
   /* optional */
@@ -763,7 +758,7 @@ PHP_FUNCTION(crypto_onetimeauth)
         zend_string_free(hash);
         zend_error(E_ERROR, "crypto_onetimeauth()");
     }
-     ZSTR_VAL(hash)[hash_len] = 0;
+    ZSTR_VAL(hash)[hash_len] = 0;
 
     RETURN_STR(hash);
 }
@@ -783,7 +778,7 @@ PHP_FUNCTION(crypto_onetimeauth_init)
     if (key_len != crypto_onetimeauth_KEYBYTES) {
         zend_error(E_ERROR, "crypto_onetimeauth_init(): unsupported key length");
     }
-    if (crypto_onetimeauth_init(state, key) != 0) {
+    if (crypto_onetimeauth_init((void *) &state_tmp, key) != 0) {
         zend_error(E_ERROR, "crypto_onetimeauth_init()");
     }
     state = zend_string_alloc(state_len, 0);
