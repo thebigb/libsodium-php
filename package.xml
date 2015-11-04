@@ -10,11 +10,11 @@
     <email>jedisct1@php.net</email>
     <active>yes</active>
   </lead>
-  <date>2015-09-03</date>
-  <time>19:47:55</time>
+  <date>2015-10-27</date>
+  <time>10:17:59</time>
   <version>
-    <release>1.0.0</release>
-    <api>1.0.0</api>
+    <release>1.0.2</release>
+    <api>1.0.2</api>
   </version>
   <stability>
     <release>stable</release>
@@ -22,9 +22,7 @@
   </stability>
   <license uri="http://opensource.org/licenses/BSD-2-Clause">BSD 2-Clause License</license>
   <notes>
-- The extension can now be statically compiled.
-- crypto_sign_publickey_from_secretkey(), and crypto_auth() have been added.
-- The extension and its API are now marked stable.
+- Compatibility with old distros and old versions of libsodium
   </notes>
   <contents>
     <dir name="/">

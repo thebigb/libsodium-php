@@ -155,7 +155,18 @@ ZEND_END_ARG_INFO()
 # define PHP_FE_END { NULL, NULL, NULL }
 #endif
 
+#if defined(HAVE_CRYPTO_AEAD_AES256GCM) && defined(crypto_aead_aes256gcm_KEYBYTES) && \
+    (defined(__amd64) || defined(__amd64__) || defined(__x86_64__) || defined(__i386__) || \
+     defined(_M_AMD64) || defined(_M_IX86))
+# define HAVE_AESGCM 1
+#endif
+
 const zend_function_entry libsodium_functions[] = {
+    ZEND_NS_NAMED_FE("Sodium", crypto_aead_aes256gcm_is_available, ZEND_FN(crypto_aead_aes256gcm_is_available), AI_None)
+#ifdef HAVE_AESGCM
+    ZEND_NS_NAMED_FE("Sodium", crypto_aead_aes256gcm_decrypt, ZEND_FN(crypto_aead_aes256gcm_decrypt), AI_StringAndADAndNonceAndKey)
+    ZEND_NS_NAMED_FE("Sodium", crypto_aead_aes256gcm_encrypt, ZEND_FN(crypto_aead_aes256gcm_encrypt), AI_StringAndADAndNonceAndKey)
+#endif
     ZEND_NS_NAMED_FE("Sodium", crypto_aead_chacha20poly1305_decrypt, ZEND_FN(crypto_aead_chacha20poly1305_decrypt), AI_StringAndADAndNonceAndKey)
     ZEND_NS_NAMED_FE("Sodium", crypto_aead_chacha20poly1305_encrypt, ZEND_FN(crypto_aead_chacha20poly1305_encrypt), AI_StringAndADAndNonceAndKey)
     ZEND_NS_NAMED_FE("Sodium", crypto_auth, ZEND_FN(crypto_auth), AI_StringAndKey)
@@ -191,6 +202,8 @@ const zend_function_entry libsodium_functions[] = {
     ZEND_NS_NAMED_FE("Sodium", crypto_shorthash, ZEND_FN(crypto_shorthash), AI_StringAndKey)
     ZEND_NS_NAMED_FE("Sodium", crypto_sign, ZEND_FN(crypto_sign), AI_StringAndKeyPair)
     ZEND_NS_NAMED_FE("Sodium", crypto_sign_detached, ZEND_FN(crypto_sign_detached), AI_StringAndKeyPair)
+    ZEND_NS_NAMED_FE("Sodium", crypto_sign_ed25519_pk_to_curve25519, ZEND_FN(crypto_sign_ed25519_pk_to_curve25519), AI_Key)
+    ZEND_NS_NAMED_FE("Sodium", crypto_sign_ed25519_sk_to_curve25519, ZEND_FN(crypto_sign_ed25519_sk_to_curve25519), AI_Key)
     ZEND_NS_NAMED_FE("Sodium", crypto_sign_keypair, ZEND_FN(crypto_sign_keypair), AI_None)
     ZEND_NS_NAMED_FE("Sodium", crypto_sign_keypair_from_secretkey_and_publickey, ZEND_FN(crypto_sign_keypair_from_secretkey_and_publickey), AI_SecretKeyAndPublicKey)
     ZEND_NS_NAMED_FE("Sodium", crypto_sign_open, ZEND_FN(crypto_sign_open), AI_StringAndKeyPair)
@@ -216,6 +229,10 @@ const zend_function_entry libsodium_functions[] = {
     ZEND_NS_NAMED_FE("Sodium", randombytes_random16, ZEND_FN(randombytes_random16), AI_None)
     ZEND_NS_NAMED_FE("Sodium", randombytes_uniform, ZEND_FN(randombytes_uniform), AI_Integer)
     ZEND_NS_NAMED_FE("Sodium", bin2hex, ZEND_FN(sodium_bin2hex), AI_String)
+#if SODIUM_LIBRARY_VERSION_MAJOR > 7 || \
+    (SODIUM_LIBRARY_VERSION_MAJOR == 7 && SODIUM_LIBRARY_VERSION_MINOR >= 6)
+    ZEND_NS_NAMED_FE("Sodium", compare, ZEND_FN(sodium_compare), AI_String)
+#endif
     ZEND_NS_NAMED_FE("Sodium", hex2bin, ZEND_FN(sodium_hex2bin), AI_TwoStrings)
     ZEND_NS_NAMED_FE("Sodium", increment, ZEND_FN(sodium_increment), AI_String)
     ZEND_NS_NAMED_FE("Sodium", library_version_major, ZEND_FN(sodium_library_version_major), AI_None)
@@ -257,6 +274,16 @@ PHP_MINIT_FUNCTION(libsodium)
         zend_error(E_ERROR, "sodium_init()");
     }
 
+#ifdef HAVE_AESGCM
+    REGISTER_LONG_CONSTANT("Sodium\\CRYPTO_AEAD_AES256GCM_KEYBYTES",
+                        crypto_aead_aes256gcm_KEYBYTES, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("Sodium\\CRYPTO_AEAD_AES256GCM_NSECBYTES",
+                        crypto_aead_aes256gcm_NSECBYTES, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("Sodium\\CRYPTO_AEAD_AES256GCM_NPUBBYTES",
+                        crypto_aead_aes256gcm_NPUBBYTES, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("Sodium\\CRYPTO_AEAD_AES256GCM_ABYTES",
+                        crypto_aead_aes256gcm_ABYTES, CONST_CS | CONST_PERSISTENT);
+#endif
     REGISTER_LONG_CONSTANT("Sodium\\CRYPTO_AEAD_CHACHA20POLY1305_KEYBYTES",
                         crypto_aead_chacha20poly1305_KEYBYTES, CONST_CS | CONST_PERSISTENT);
     REGISTER_LONG_CONSTANT("Sodium\\CRYPTO_AEAD_CHACHA20POLY1305_NSECBYTES",
@@ -414,12 +441,45 @@ PHP_FUNCTION(sodium_memzero)
     if (Z_TYPE_P(buf_zv) != IS_STRING) {
         zend_error(E_ERROR, "memzero: a PHP string is required");
     }
+    if (HAS_MORE_REFS(buf_zv)) {
+        convert_to_null(buf_zv);
+        return;
+    }
     buf = Z_STRVAL(*buf_zv);
     buf_len = Z_STRLEN(*buf_zv);
     if (buf_len > 0) {
         sodium_memzero(buf, (size_t) buf_len);
     }
     convert_to_null(buf_zv);
+}
+
+PHP_FUNCTION(sodium_increment)
+{
+    zval          *val_zv;
+    unsigned char *val;
+    strsize_t      i;
+    strsize_t      val_len;
+    unsigned int   c;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
+                              "z", &val_zv) == FAILURE) {
+        return;
+    }
+    ZVAL_DEREF(val_zv);
+    if (IS_IMMUTABLE(val_zv)) {
+        return;
+    }
+    if (Z_TYPE_P(val_zv) != IS_STRING) {
+        zend_error(E_ERROR, "increment(): a PHP string is required");
+    }
+    val = (unsigned char *) Z_STRVAL(*val_zv);
+    val_len = Z_STRLEN(*val_zv);
+    c = 1U << 8;
+    for (i = (strsize_t) 0U; i < val_len; i++) {
+        c >>= 8;
+        c += val[i];
+        val[i] = (unsigned char) c;
+    }
 }
 
 PHP_FUNCTION(sodium_memcmp)
@@ -2056,6 +2116,129 @@ PHP_FUNCTION(crypto_pwhash_scryptsalsa208sha256_str_verify)
     RETURN_FALSE;
 }
 
+PHP_FUNCTION(crypto_aead_aes256gcm_is_available)
+{
+#ifdef HAVE_AESGCM
+    RETURN_BOOL(crypto_aead_aes256gcm_is_available());
+#else
+    RETURN_FALSE;
+#endif
+}
+
+#ifdef HAVE_AESGCM
+PHP_FUNCTION(crypto_aead_aes256gcm_encrypt)
+{
+    zend_string        *ciphertext;
+    unsigned char      *ad;
+    unsigned char      *msg;
+    unsigned char      *npub;
+    unsigned char      *secretkey;
+    unsigned long long  ciphertext_real_len;
+    strsize_t           ad_len;
+    strsize_t           ciphertext_len;
+    strsize_t           msg_len;
+    strsize_t           npub_len;
+    strsize_t           secretkey_len;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ssss",
+                              &msg, &msg_len,
+                              &ad, &ad_len,
+                              &npub, &npub_len,
+                              &secretkey, &secretkey_len) == FAILURE) {
+        return;
+    }
+    if (npub_len != crypto_aead_aes256gcm_NPUBBYTES) {
+        zend_error(E_ERROR,
+                   "crypto_aead_aes256gcm_encrypt(): "
+                   "public nonce size should be "
+                   "CRYPTO_AEAD_aes256gcm_NPUBBYTES bytes");
+    }
+    if (secretkey_len != crypto_aead_aes256gcm_KEYBYTES) {
+        zend_error(E_ERROR,
+                   "crypto_aead_aes256gcm_encrypt(): "
+                   "secret key size should be "
+                   "CRYPTO_AEAD_aes256gcm_KEYBYTES bytes");
+    }
+    if (STRSIZE_MAX - msg_len <= crypto_aead_aes256gcm_ABYTES) {
+        zend_error(E_ERROR, "arithmetic overflow");
+    }
+    ciphertext_len = msg_len + crypto_aead_aes256gcm_ABYTES;
+    ciphertext = zend_string_alloc((size_t) ciphertext_len, 0);
+    if (crypto_aead_aes256gcm_encrypt
+        ((unsigned char *) ZSTR_VAL(ciphertext), &ciphertext_real_len, msg,
+         (unsigned long long) msg_len,
+         ad, (unsigned long long) ad_len, NULL, npub, secretkey) != 0) {
+        zend_string_free(ciphertext);
+        zend_error(E_ERROR, "crypto_aead_aes256gcm_encrypt()");
+    }
+    if (ciphertext_real_len <= 0U || ciphertext_real_len >= STRSIZE_MAX ||
+        ciphertext_real_len > ciphertext_len) {
+        zend_string_free(ciphertext);
+        zend_error(E_ERROR, "arithmetic overflow");
+    }
+    ZSTR_TRUNCATE(ciphertext, (strsize_t) ciphertext_real_len);
+    ZSTR_VAL(ciphertext)[ciphertext_real_len] = 0;
+
+    RETURN_STR(ciphertext);
+}
+
+PHP_FUNCTION(crypto_aead_aes256gcm_decrypt)
+{
+    zend_string        *msg;
+    unsigned char      *ad;
+    unsigned char      *ciphertext;
+    unsigned char      *npub;
+    unsigned char      *secretkey;
+    unsigned long long  msg_real_len;
+    strsize_t           ad_len;
+    strsize_t           ciphertext_len;
+    strsize_t           msg_len;
+    strsize_t           npub_len;
+    strsize_t           secretkey_len;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ssss",
+                              &ciphertext, &ciphertext_len,
+                              &ad, &ad_len,
+                              &npub, &npub_len,
+                              &secretkey, &secretkey_len) == FAILURE) {
+        return;
+    }
+    if (npub_len != crypto_aead_aes256gcm_NPUBBYTES) {
+        zend_error(E_ERROR,
+                   "crypto_aead_aes256gcm_decrypt(): "
+                   "public nonce size should be "
+                   "CRYPTO_AEAD_aes256gcm_NPUBBYTES bytes");
+    }
+    if (secretkey_len != crypto_aead_aes256gcm_KEYBYTES) {
+        zend_error(E_ERROR,
+                   "crypto_aead_aes256gcm_decrypt(): "
+                   "secret key size should be "
+                   "CRYPTO_AEAD_aes256gcm_KEYBYTES bytes");
+    }
+    msg_len = ciphertext_len;
+    if (msg_len >= STRSIZE_MAX) {
+        zend_error(E_ERROR, "arithmetic overflow");
+    }
+    msg = zend_string_alloc((size_t) msg_len, 0);
+    if (ciphertext_len < crypto_aead_aes256gcm_ABYTES ||
+        crypto_aead_aes256gcm_decrypt
+        ((unsigned char *) ZSTR_VAL(msg), &msg_real_len, NULL,
+         ciphertext, (unsigned long long) ciphertext_len,
+         ad, (unsigned long long) ad_len, npub, secretkey) != 0) {
+        zend_string_free(msg);
+        RETURN_FALSE;
+    }
+    if (msg_real_len >= STRSIZE_MAX || msg_real_len > msg_len) {
+        zend_string_free(msg);
+        zend_error(E_ERROR, "arithmetic overflow");
+    }
+    ZSTR_TRUNCATE(msg, (strsize_t) msg_real_len);
+    ZSTR_VAL(msg)[msg_real_len] = 0;
+
+    RETURN_STR(msg);
+}
+#endif
+
 PHP_FUNCTION(crypto_aead_chacha20poly1305_encrypt)
 {
     zend_string        *ciphertext;
@@ -2150,7 +2333,8 @@ PHP_FUNCTION(crypto_aead_chacha20poly1305_decrypt)
         zend_error(E_ERROR, "arithmetic overflow");
     }
     msg = zend_string_alloc((size_t) msg_len, 0);
-    if (crypto_aead_chacha20poly1305_decrypt
+    if (ciphertext_len < crypto_aead_chacha20poly1305_ABYTES ||
+        crypto_aead_chacha20poly1305_decrypt
         ((unsigned char *) ZSTR_VAL(msg), &msg_real_len, NULL,
          ciphertext, (unsigned long long) ciphertext_len,
          ad, (unsigned long long) ad_len, npub, secretkey) != 0) {
@@ -2216,32 +2400,6 @@ PHP_FUNCTION(sodium_hex2bin)
     ZSTR_VAL(bin)[bin_real_len] = 0;
 
     RETURN_STR(bin);
-}
-
-PHP_FUNCTION(sodium_increment)
-{
-    zval          *val_zv;
-    unsigned char *val;
-    strsize_t      i;
-    strsize_t      val_len;
-    unsigned int   c;
-
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC,
-                              "z", &val_zv) == FAILURE) {
-        return;
-    }
-    ZVAL_DEREF(val_zv);
-    if (Z_TYPE_P(val_zv) != IS_STRING) {
-        zend_error(E_ERROR, "increment: a PHP string is required");
-    }
-    val = (unsigned char *) Z_STRVAL(*val_zv);
-    val_len = Z_STRLEN(*val_zv);
-    c = 1U << 8;
-    for (i = (strsize_t) 0U; i < val_len; i++) {
-        c >>= 8;
-        c += val[i];
-        val[i] = (unsigned char) c;
-    }
 }
 
 PHP_FUNCTION(crypto_scalarmult)
@@ -2375,3 +2533,80 @@ PHP_FUNCTION(crypto_auth_verify)
     }
     RETURN_TRUE;
 }
+
+PHP_FUNCTION(crypto_sign_ed25519_sk_to_curve25519)
+{
+    zend_string *ecdhkey;
+    char        *eddsakey;
+    strsize_t    eddsakey_len;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s",
+                              &eddsakey, &eddsakey_len) == FAILURE) {
+        return;
+    }
+    if (eddsakey_len != crypto_sign_SECRETKEYBYTES) {
+        zend_error(E_ERROR,
+                   "crypto_sign_ed25519_sk_to_curve25519(): "
+                   "Ed25519 key should be CRYPTO_SIGN_SECRETKEYBYTES long");
+    }
+    ecdhkey = zend_string_alloc(crypto_box_SECRETKEYBYTES, 0);
+
+    if (crypto_sign_ed25519_sk_to_curve25519((unsigned char *) ZSTR_VAL(ecdhkey),
+                                             (const unsigned char *) eddsakey) != 0) {
+        zend_error(E_ERROR, "crypto_sign_ed25519_sk_to_curve25519()");
+    }
+    ZSTR_VAL(ecdhkey)[crypto_box_SECRETKEYBYTES] = 0;
+
+    RETURN_STR(ecdhkey);
+}
+
+PHP_FUNCTION(crypto_sign_ed25519_pk_to_curve25519)
+{
+    zend_string *ecdhkey;
+    char        *eddsakey;
+    strsize_t    eddsakey_len;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s",
+                              &eddsakey, &eddsakey_len) == FAILURE) {
+        return;
+    }
+    if (eddsakey_len != crypto_sign_PUBLICKEYBYTES) {
+        zend_error(E_ERROR,
+                   "crypto_sign_ed25519_pk_to_curve25519(): "
+                   "Ed25519 key should be CRYPTO_SIGN_PUBLICKEYBYTES long");
+    }
+    ecdhkey = zend_string_alloc(crypto_sign_PUBLICKEYBYTES, 0);
+
+    if (crypto_sign_ed25519_pk_to_curve25519((unsigned char *) ZSTR_VAL(ecdhkey),
+                                             (const unsigned char *) eddsakey) != 0) {
+        zend_error(E_ERROR, "crypto_sign_ed25519_pk_to_curve25519()");
+    }
+    ZSTR_VAL(ecdhkey)[crypto_box_PUBLICKEYBYTES] = 0;
+
+    RETURN_STR(ecdhkey);
+}
+
+#if SODIUM_LIBRARY_VERSION_MAJOR > 7 || \
+    (SODIUM_LIBRARY_VERSION_MAJOR == 7 && SODIUM_LIBRARY_VERSION_MINOR >= 6)
+PHP_FUNCTION(sodium_compare)
+{
+    char      *buf1;
+    char      *buf2;
+    strsize_t  len1;
+    strsize_t  len2;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss",
+                              &buf1, &len1,
+                              &buf2, &len2) == FAILURE) {
+        return;
+    }
+    if (len1 != len2) {
+        zend_error(E_ERROR, "compare(): arguments have different sizes");
+    } else if (len1 > SIZE_MAX) {
+        zend_error(E_ERROR, "compare(): invalid length");
+    } else {
+        RETURN_LONG(sodium_compare((const unsigned char *) buf1,
+                                   (const unsigned char *) buf2, (size_t) len1));
+    }
+}
+#endif

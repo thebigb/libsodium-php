@@ -5,7 +5,7 @@
 extern zend_module_entry libsodium_module_entry;
 #define phpext_libsodium_ptr &libsodium_module_entry
 
-#define PHP_LIBSODIUM_VERSION "1.0.0"
+#define PHP_LIBSODIUM_VERSION "1.0.2"
 
 #ifdef PHP_WIN32
 # define PHP_LIBSODIUM_API __declspec(dllexport)
@@ -25,6 +25,9 @@ PHP_RINIT_FUNCTION(libsodium);
 PHP_RSHUTDOWN_FUNCTION(libsodium);
 PHP_MINFO_FUNCTION(libsodium);
 
+PHP_FUNCTION(crypto_aead_aes256gcm_is_available);
+PHP_FUNCTION(crypto_aead_aes256gcm_decrypt);
+PHP_FUNCTION(crypto_aead_aes256gcm_encrypt);
 PHP_FUNCTION(crypto_aead_chacha20poly1305_decrypt);
 PHP_FUNCTION(crypto_aead_chacha20poly1305_encrypt);
 PHP_FUNCTION(crypto_auth);
@@ -58,6 +61,8 @@ PHP_FUNCTION(crypto_secretbox_open);
 PHP_FUNCTION(crypto_shorthash);
 PHP_FUNCTION(crypto_sign);
 PHP_FUNCTION(crypto_sign_detached);
+PHP_FUNCTION(crypto_sign_ed25519_pk_to_curve25519);
+PHP_FUNCTION(crypto_sign_ed25519_sk_to_curve25519);
 PHP_FUNCTION(crypto_sign_keypair);
 PHP_FUNCTION(crypto_sign_keypair_from_secretkey_and_publickey);
 PHP_FUNCTION(crypto_sign_open);
@@ -83,6 +88,7 @@ PHP_FUNCTION(randombytes_buf);
 PHP_FUNCTION(randombytes_random16);
 PHP_FUNCTION(randombytes_uniform);
 PHP_FUNCTION(sodium_bin2hex);
+PHP_FUNCTION(sodium_compare);
 PHP_FUNCTION(sodium_hex2bin);
 PHP_FUNCTION(sodium_increment);
 PHP_FUNCTION(sodium_library_version_major);
